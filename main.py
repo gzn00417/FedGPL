@@ -130,7 +130,7 @@ if __name__ == '__main__':
         for i in range(0, args.num_users):
 
             # Build Prompts & head layers (answering)
-            PG = HeavyPrompt(token_dim=input_dim, token_num=10, cross_prune=0.1, inner_prune=0.3)
+            PG = HeavyPrompt(token_dim=input_dim, token_num=args.token_number, cross_prune=0.1, inner_prune=0.3)
             answering = torch.nn.Sequential(
                         torch.nn.Linear(hid_dim, args.num_classes),
                         torch.nn.Softmax(dim=1))

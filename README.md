@@ -4,7 +4,7 @@
 
 * To train the ProG on CiteSeer in a multi-task manner, with shots = 100, token number = 10:
     ```
-    python main.py --algorithm ProG --dataname CiteSeer --shots 100 --token_number 10
+    python main.py --algorithm ProG --data_name CiteSeer --shots 100 --token_number 10
     ```
 
 ## Options for Training
