@@ -2,11 +2,13 @@ import copy, sys
 import numpy as np
 from tqdm import tqdm
 import torch
-from tensorboardX import SummaryWriter
 import random
 from pathlib import Path
-
+import os
 import wandb
+
+os.environ['WANDB_API_KEY'] = '0ac5494dda18ee4c0537c51e9c7df96769f4a5cf'
+wandb.login()
 
 lib_dir = (Path(__file__).parent / ".." / "lib").resolve()
 if str(lib_dir) not in sys.path:
@@ -23,7 +25,6 @@ from lib.prompt import GNN, HeavyPrompt
 
 wandb.init(
     project = "Federated-Graph-Prompt",
-
     config = {
         "learning_rate": 0.01,
         "architecture": "GNN",
@@ -103,11 +104,12 @@ if __name__ == '__main__':
 
     # set random seeds
     args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(args.device)
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device(args.device)
 
     # load dataset and user groups
 

@@ -35,4 +35,4 @@ Procedure:
 
 * ```--data_name:``` Dataset you want to use. Default: CiteSeer,
 * ```--smallest_size:``` Smallest number of nodes a reduced graph has. Default: 100,
-* ```--smallest_size:``` Largest number of nodes a reduced graph has. Default: 300.
+* ```--largest_size:``` Largest number of nodes a reduced graph has. Default: 300.

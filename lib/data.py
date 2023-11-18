@@ -20,8 +20,8 @@ def multi_class_NIG(dataname, num_class,shots=100):
     # load training NIG (node induced graphs)
     train_list = []
     for task_id in range(num_class):
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']
@@ -40,8 +40,8 @@ def multi_class_NIG(dataname, num_class,shots=100):
 
     test_list = []
     for task_id in range(num_class):
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.test.support'.format(dataname, task_id)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.test.query'.format(dataname, task_id)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.test.support'.format(dataname, task_id)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.test.query'.format(dataname, task_id)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']
@@ -80,8 +80,8 @@ def multi_class_EIG(dataname, num_class,shots=100):
     train_list = []
     for task_id in range(num_class):
         task_id = task_id + num_class
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']
@@ -99,8 +99,8 @@ def multi_class_EIG(dataname, num_class,shots=100):
     test_list = []
     for task_id in range(num_class):
         temp = task_id + num_class
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.test.support'.format(dataname, temp)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.test.query'.format(dataname, temp)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.test.support'.format(dataname, temp)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.test.query'.format(dataname, temp)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']
@@ -134,8 +134,8 @@ def multi_class_GIG(dataname, num_class,shots=100):
     train_list = []
     for task_id in range(num_class):
         task_id = task_id + num_class*2
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.train.support'.format(dataname, task_id)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.train.query'.format(dataname, task_id)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']
@@ -153,8 +153,8 @@ def multi_class_GIG(dataname, num_class,shots=100):
     test_list = []
     for task_id in range(num_class):
         temp = task_id + num_class*2
-        data_path1 = './Dataset/{}/induced_graphs/task{}.meta.test.support'.format(dataname, temp)
-        data_path2 = './Dataset/{}/induced_graphs/task{}.meta.test.query'.format(dataname, temp)
+        data_path1 = './data/{}/induced_graphs/task{}.meta.test.support'.format(dataname, temp)
+        data_path2 = './data/{}/induced_graphs/task{}.meta.test.query'.format(dataname, temp)
 
         with (open(data_path1, 'br') as f1, open(data_path2, 'br') as f2):
             list1, list2 = pk.load(f1)['pos'], pk.load(f2)['pos']

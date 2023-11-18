@@ -1,13 +1,10 @@
-#!/usr/bin/env python
-# -*- coding: utf-8 -*-
-# Python version: 3.6
-
 import torch
 from torch import nn, optim
 from torch_geometric.loader import DataLoader
 import copy
 import numpy as np
 from lib.eva import acc_f1_over_batches
+
 
 class LocalUpdate(object):
     def __init__(self, args, train_dataset, test_dataset, task_type):

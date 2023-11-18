@@ -4,7 +4,6 @@ from torch_geometric.nn import GCNConv, global_mean_pool, GATConv, TransformerCo
 from torch_geometric.data import Batch, Data
 from lib.utils import act
 import warnings
-from deprecated.sphinx import deprecated
 
 
 class GNN(torch.nn.Module):
@@ -169,40 +168,6 @@ class FrontAndHead(torch.nn.Module):
     def forward(self, graph_batch, gnn):
         prompted_graph = self.PG(graph_batch)
         graph_emb = gnn(prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch)
-        pre = self.answering(graph_emb)
-
-        return pre
-
-
-@deprecated(version='1.0', reason="Pipeline is deprecated, use FrontAndHead instead")
-class Pipeline(torch.nn.Module):
-    def __init__(self, input_dim, dataname, gcn_layer_num=2, hid_dim=16, num_classes=2,
-                 task_type="multi_label_classification",
-                 token_num=10, cross_prune=0.1, inner_prune=0.3, gnn_type='TransformerConv'):
-        warnings.warn("deprecated", DeprecationWarning)
-
-        super().__init__()
-        # load pre-trained GNN
-        self.gnn = GNN(input_dim, hid_dim=hid_dim, out_dim=hid_dim, gcn_layer_num=gcn_layer_num, gnn_type=gnn_type)
-        pre_train_path = './pre_trained_gnn/{}.GraphCL.{}.pth'.format(dataname, gnn_type)
-        self.gnn.load_state_dict(torch.load(pre_train_path))
-        print("successfully load pre-trained weights for gnn! @ {}".format(pre_train_path))
-        for p in self.gnn.parameters():
-            p.requires_grad = False
-
-        self.PG = HeavyPrompt(token_dim=input_dim, token_num=token_num, cross_prune=cross_prune,
-                              inner_prune=inner_prune)
-
-        if task_type == 'multi_label_classification':
-            self.answering = torch.nn.Sequential(
-                torch.nn.Linear(hid_dim, num_classes),
-                torch.nn.Softmax(dim=1))
-        else:
-            raise NotImplementedError
-
-    def forward(self, graph_batch: Batch):
-        prompted_graph = self.PG(graph_batch)
-        graph_emb = self.gnn(prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch)
         pre = self.answering(graph_emb)
 
         return pre
