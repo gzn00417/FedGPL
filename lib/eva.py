@@ -168,11 +168,11 @@ def acc_f1_over_batches(test_loader, PG, gnn, answering, num_class, task_type, d
 
         acc = accuracy(pre_cla, y)
         ma_f1 = macro_f1(pre_cla, y)
-        print("Batch {} Acc: {:.4f} | Macro-F1: {:.4f}".format(batch_id, acc.item(), ma_f1.item()))
+        # print("Batch {} Acc: {:.4f} | Macro-F1: {:.4f}".format(batch_id, acc.item(), ma_f1.item()))
 
     acc = accuracy.compute()
     ma_f1 = macro_f1.compute()
-    print("Final True Acc: {:.4f} | Macro-F1: {:.4f}".format(acc.item(), ma_f1.item()))
+    # print("Final True Acc: {:.4f} | Macro-F1: {:.4f}".format(acc.item(), ma_f1.item()))
     accuracy.reset()
     macro_f1.reset()
     PG = PG.to(device)

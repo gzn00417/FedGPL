@@ -1,4 +1,6 @@
-import copy, sys
+from typing import Any
+import copy
+import sys
 import numpy as np
 from tqdm import tqdm
 import torch
@@ -16,22 +18,23 @@ if str(lib_dir) not in sys.path:
 mod_dir = (Path(__file__).parent / ".." / "lib" / "models").resolve()
 if str(mod_dir) not in sys.path:
     sys.path.insert(0, str(mod_dir))
-
-from lib.update import LocalUpdate
-from lib.utils import exp_details, PG_aggregation
-from lib.data import get_dataset
-from lib.options import args_parser
 from lib.prompt import GNN, HeavyPrompt
+from lib.options import args_parser
+from lib.data import get_dataset
+from lib.utils import PG_aggregation
+from lib.update import LocalUpdate
+
 
 wandb.init(
-    project = "Federated-Graph-Prompt",
-    config = {
+    project="Federated-Graph-Prompt",
+    config={
         "learning_rate": 0.01,
         "architecture": "GNN",
         "dataset": "CiteSeer",
         "epochs": 200,
     }
 )
+
 
 def FedProG(args, train_lists_group, test_lists_group, local_PG_list, local_ans_list, gnn, task_type):
 
@@ -42,13 +45,13 @@ def FedProG(args, train_lists_group, test_lists_group, local_PG_list, local_ans_
     for round in tqdm(range(args.rounds)):
 
         local_PG_weights, local_answing_weights = [], []
-        local_losses, local_acc, local_macro_f1 =  [], [], []
+        local_losses, local_acc, local_macro_f1 = [], [], []
         print(f'\n | Global Training Round : {round + 1} |\n')
 
         for idx in idxs_users:
             local_PG = LocalUpdate(args=args, train_dataset=train_lists_group[idx], test_dataset=test_lists_group[idx], task_type=task_type)
 
-            PG_weight, answ_weight, loss, acc, macro_f1= local_PG.update_weights(PG=copy.deepcopy(local_PG_list[idx]), answering=copy.deepcopy(local_ans_list[idx]), gnn=gnn)
+            PG_weight, answ_weight, loss, acc, macro_f1 = local_PG.update_weights(PG=copy.deepcopy(local_PG_list[idx]), answering=copy.deepcopy(local_ans_list[idx]), gnn=gnn)
 
             local_PG_weights.append(copy.deepcopy(PG_weight))
             local_answing_weights.append(copy.deepcopy(answ_weight))
@@ -93,10 +96,10 @@ def FedProG(args, train_lists_group, test_lists_group, local_PG_list, local_ans_
 
     wandb.finish()
 
+
 if __name__ == '__main__':
 
     args = args_parser()
-    exp_details(args)
 
     input_dim, hid_dim = 100, 100
     tnpc = args.token_number  # token number per class
@@ -112,7 +115,7 @@ if __name__ == '__main__':
 
     # load dataset and user groups
 
-    train_lists_group, test_lists_group = get_dataset(args, args.num_classes ,args.num_users, args.shots)
+    train_lists_group, test_lists_group = get_dataset(args, args.num_classes, args.num_users, args.shots)
 
     # Build models
     if args.algorithm == 'ProG':
@@ -131,9 +134,10 @@ if __name__ == '__main__':
             # Build Prompts & head layers (answering)
             PG = HeavyPrompt(token_dim=input_dim, token_num=args.token_number, cross_prune=0.1, inner_prune=0.3)
             answering = torch.nn.Sequential(
-                        torch.nn.Linear(hid_dim, args.num_classes),
-                        torch.nn.Softmax(dim=1))
-            
+                torch.nn.Linear(hid_dim, args.num_classes),
+                torch.nn.Softmax(dim=1)
+            )
+
             gnn.to(args.device)
             PG.to(args.device)
             answering.to(args.device)
@@ -141,5 +145,5 @@ if __name__ == '__main__':
             local_gnn_list.append(gnn)
             local_PG_list.append(PG)
             local_ans_list.append(answering)
-            
+
         FedProG(args, train_lists_group, test_lists_group, local_PG_list, local_ans_list, gnn, args.task_type)

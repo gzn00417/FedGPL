@@ -17,19 +17,6 @@ def mkdir(path):
     else:
         print("folder exists! {}".format(path))
 
-def exp_details(args):
-    print('\nExperimental details:')
-    print(f'    Pre-trained GNN     : {args.gnn_type}')
-    print(f'    Optimizer : Adam')
-    print(f'    Learning  : 0.001')
-    print(f'    Global Rounds   : {args.rounds}\n')
-
-    print(f'    Number of users  : {args.num_users}')
-    # print(f'    Fraction of users  : {args.frac}')
-    # print(f'    Local Batch size   : {args.local_bs}')
-    print(f'    Local Epochs       : {args.local_epochs}\n')
-    return
-
 # used in prompt.py
 def act(x=None, act_type='leakyrelu'):
     if act_type == 'leakyrelu':
