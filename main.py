@@ -99,7 +99,6 @@ if __name__ == '__main__':
     exp_details(args)
 
     input_dim, hid_dim = 100, 100
-    lr, wd = 0.001, 0.00001
     tnpc = args.token_number  # token number per class
 
     # set random seeds

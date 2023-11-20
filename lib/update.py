@@ -10,11 +10,11 @@ class LocalUpdate(object):
     def __init__(self, args, train_dataset, test_dataset, task_type):
         self.args = args
         self.train_loader = DataLoader(train_dataset, batch_size=args.shots, shuffle=True)
-        self.test_loader = DataLoader(test_dataset, batch_size=args.shots, shuffle=True)
+        self.test_loader = DataLoader(test_dataset, batch_size=args.shots, shuffle=False)
         self.device = args.device
 
         self.input_dim, self.hid_dim = 100, 100
-        self.lr, self.wd = 0.001, 0.00001
+        self.lr, self.wd = 0.01, 1e-8
         self.tnpc = args.token_number  # token number
 
         self.task_type = task_type
@@ -23,17 +23,11 @@ class LocalUpdate(object):
         # Set mode to train model
 
         lossfn = nn.CrossEntropyLoss(reduction='mean')
-        lossPrompt = nn.MSELoss()
 
         lossfn.to(self.device)
-        lossPrompt.to(self.device)
 
-        opi_pg = optim.Adam(filter(lambda p: p.requires_grad, PG.parameters()),
-                         lr=self.lr,
-                         weight_decay=self.wd)    
-        opi_answer = optim.Adam(filter(lambda p: p.requires_grad, answering.parameters()), 
-                                lr=0.01,
-                                weight_decay=0.00001)      
+        opi_pg = optim.Adam(filter(lambda p: p.requires_grad, PG.parameters()), lr=self.lr, weight_decay=self.wd)
+        opi_answer = optim.Adam(filter(lambda p: p.requires_grad, answering.parameters()), lr=0.01, weight_decay=1e-8)      
 
         local_loss, acc, macro_f1= [], [], []
 
@@ -80,9 +74,7 @@ class LocalUpdate(object):
 
                 if batch_id % 5 == 4:  # report every 5 updates
                     last_loss = running_loss / 5  # loss per batch
-                    print(
-                       'epoch {}/{} | batch {}/{} | loss: {:.8f}'.format(j, self.args.local_epochs, batch_id+1, len(self.train_loader),
-                                                                         last_loss))
+                    print('epoch {}/{} | batch {}/{} | loss: {:.8f}'.format(j, self.args.local_epochs, batch_id+1, len(self.train_loader), last_loss))
                 local_loss.append(running_loss)
                 running_loss = 0
 
