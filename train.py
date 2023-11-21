@@ -2,12 +2,7 @@ from typing import Dict
 import torch
 from torch import nn
 from torch_geometric.loader import DataLoader
-import pytorch_lightning as pl
 import torchmetrics
-from lib.prompt import GNN, HeavyPrompt
-from lib.options import args_parser
-from lib.data import get_dataset
-from lib.utils import PG_aggregation
 import pytorch_lightning as pl
 from pytorch_lightning.trainer import Trainer
 from pytorch_lightning.loggers import WandbLogger
@@ -15,6 +10,10 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from copy import copy
 import os
 import wandb
+
+from lib.prompt import GNN, HeavyPrompt
+from lib.options import args_parser
+from lib.data import get_dataset
 
 os.environ['WANDB_API_KEY'] = '0ac5494dda18ee4c0537c51e9c7df96769f4a5cf'
 wandb.login()
@@ -28,7 +27,7 @@ class Server(pl.LightningModule):
         self.automatic_optimization = False
         self.validation_step_outputs = []
         # init data
-        train_lists_group, test_lists_group = get_dataset(args, args.num_classes, args.num_users, args.shots)
+        train_lists_group, test_lists_group = get_dataset(args, args.num_classes, args.num_users)
         # init pretrain GNN
         self.pre_trained_gnn = GNN(args.input_dim, hid_dim=args.hidden_dim, out_dim=args.hidden_dim, gcn_layer_num=2, gnn_type=args.gnn_type)
         self.pre_trained_gnn.load_state_dict(torch.load(f'./pre_trained_gnn/{args.data_name}.GraphCL.{args.gnn_type}.pth'))
@@ -64,14 +63,23 @@ class Server(pl.LightningModule):
         return torch.utils.data.DataLoader(list(range(len(self.id2client))), batch_size=1)
 
     def on_train_epoch_start(self):
-        # FedAvg
         client_prompt_weight = []
         for client in self.id2client:
             prompt_weight = copy(client.prompt.state_dict())
             client_prompt_weight.append(prompt_weight)
-        global_prompt_weight = PG_aggregation(client_prompt_weight)
+        global_prompt_weight = self.aggregate_prompt(client_prompt_weight)
         for client in self.id2client:
             client.prompt.load_state_dict(global_prompt_weight, strict=True)
+
+    def aggregate_prompt(self, client_prompt_weight):
+        # FedAvg
+        weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
+        for weights in client_prompt_weight:
+            for key, value in weights.items():
+                weight_sum[key] += value
+        num_models = len(client_prompt_weight)
+        aggregated_prompt_weight = {k: v / num_models for k, v in weight_sum.items()}
+        return aggregated_prompt_weight
 
     def training_step(self, batch, *args, **kwargs):
         client = self.id2client[int(batch[0])]
@@ -194,7 +202,7 @@ if __name__ == '__main__':
         max_epochs=args.epochs,
         logger=WandbLogger(
             save_dir='./',
-            name='log',
+            name='Federated-Graph-Prompt',
             log_model='all',
         ),
         callbacks=[early_stopping_callback, model_checkpoint_callback],

@@ -1,9 +1,7 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool, GATConv, TransformerConv
+from torch_geometric import nn
 from torch_geometric.data import Batch, Data
-from lib.utils import act
-import warnings
 
 
 class GNN(torch.nn.Module):
@@ -11,11 +9,11 @@ class GNN(torch.nn.Module):
         super().__init__()
 
         if gnn_type == 'GCN':
-            GraphConv = GCNConv
+            GraphConv = nn.GCNConv
         elif gnn_type == 'GAT':
-            GraphConv = GATConv
+            GraphConv = nn.GATConv
         elif gnn_type == 'TransformerConv':
-            GraphConv = TransformerConv
+            GraphConv = nn.TransformerConv
         else:
             raise KeyError('gnn_type can be only GAT, GCN and TransformerConv')
 
@@ -36,19 +34,26 @@ class GNN(torch.nn.Module):
             self.conv_layers = torch.nn.ModuleList(layers)
 
         if pool is None:
-            self.pool = global_mean_pool
+            self.pool = nn.global_mean_pool
         else:
             self.pool = pool
 
     def forward(self, x, edge_index, batch):
         for conv in self.conv_layers[0:-1]:
             x = conv(x, edge_index)
-            x = act(x)
+            x = self.act(x)
             x = F.dropout(x, training=self.training)
 
         node_emb = self.conv_layers[-1](x, edge_index)
         graph_emb = self.pool(node_emb, batch.long())
         return graph_emb
+
+    @staticmethod
+    def act(x=None, act_type='leakyrelu'):
+        if act_type == 'leakyrelu':
+            return F.leaky_relu(x) if x is not None else torch.nn.LeakyReLU()
+        elif act_type == 'tanh':
+            return torch.tanh(x) if x is not None else torch.nn.Tanh()
 
 
 class LightPrompt(torch.nn.Module):
@@ -130,14 +135,14 @@ class HeavyPrompt(LightPrompt):
             g_edge_index = g.edge_index + token_num
             # pg_x = pg.x.to(device)
             # g_x = g.x.to(device)
-            
+
             cross_dot = torch.mm(pg.x, torch.transpose(g.x, 0, 1))
             cross_sim = torch.sigmoid(cross_dot)  # 0-1 from prompt to input graph
             cross_adj = torch.where(cross_sim < self.cross_prune, 0, cross_sim)
-            
+
             cross_edge_index = cross_adj.nonzero().t().contiguous()
             cross_edge_index[1] = cross_edge_index[1] + token_num
-            
+
             x = torch.cat([pg.x, g.x], dim=0)
             y = g.y
 
@@ -147,32 +152,3 @@ class HeavyPrompt(LightPrompt):
 
         graphp_batch = Batch.from_data_list(re_graph_list)
         return graphp_batch
-
-class FrontAndHead(torch.nn.Module):
-    def __init__(self, input_dim, hid_dim=16, num_classes=2,
-                 task_type="multi_label_classification",
-                 token_num=10, cross_prune=0.1, inner_prune=0.3):
-
-        super().__init__()
-
-        self.PG = HeavyPrompt(token_dim=input_dim, token_num=token_num, cross_prune=cross_prune,
-                              inner_prune=inner_prune)
-
-        if task_type == 'multi_label_classification':
-            self.answering = torch.nn.Sequential(
-                torch.nn.Linear(hid_dim, num_classes),
-                torch.nn.Softmax(dim=1))
-        else:
-            raise NotImplementedError
-
-    def forward(self, graph_batch, gnn):
-        prompted_graph = self.PG(graph_batch)
-        graph_emb = gnn(prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch)
-        pre = self.answering(graph_emb)
-
-        return pre
-
-
-
-if __name__ == '__main__':
-    pass

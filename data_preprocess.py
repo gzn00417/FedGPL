@@ -1,6 +1,6 @@
 from collections import defaultdict
 import pickle as pk
-from torch_geometric.utils import subgraph, k_hop_subgraph, to_networkx
+from torch_geometric.utils import subgraph, k_hop_subgraph
 import torch
 import numpy as np
 from torch_geometric.transforms import SVDFeatureReduction
@@ -9,11 +9,20 @@ from torch_geometric.data import Data, Batch
 import random
 import warnings
 import argparse
-from lib.utils import mkdir
+import os
 from random import shuffle
 
 # this file has been tested applicable on PubMed and CiteSeer.
 # next, we will further make it complicable with Cora and Reddits2
+
+
+def mkdir(path):
+    folder = os.path.exists(path)
+    if not folder:
+        os.makedirs(path)
+        print("create folder {}".format(path))
+    else:
+        print("folder exists! {}".format(path))
 
 
 def nodes_split(data: Data, dataname: str = None, node_classes=3):
@@ -223,7 +232,6 @@ def induced_graphs_edges(data, dataname: str = None, num_classes=3, smallest_siz
                 fname = './data/{}/edge_level/index/task{}.meta.{}.{}'.format(dataname, task_id, t, d)
                 fnames.append(fname)
 
-
     # 1-hop edge induced graphs
     for fname in fnames:
         induced_graph_dic_list = defaultdict(list)
@@ -239,7 +247,6 @@ def induced_graphs_edges(data, dataname: str = None, num_classes=3, smallest_siz
         #                                     edge_index,
         #                                     relabel_nodes=False)  # attention! relabel_nodes=False!!!!!!
         # # I previously use the following to construct graph but most of the baselines ouput 1.0 acc.
-
 
         a = pk.load(open(fname, 'br'))
 
@@ -314,7 +321,6 @@ def induced_graphs_graphs(data, dataname: str = None, num_classes=3, smallest_si
     ori_x = data.x
     num_nodes = data.x.shape[0]
 
-
     for n_label in range(num_classes):
         task_id = 2 * num_classes + n_label
 
@@ -322,11 +328,10 @@ def induced_graphs_graphs(data, dataname: str = None, num_classes=3, smallest_si
         nodes = nodes[torch.randperm(nodes.shape[0])]
         # print("there are {} nodes for label {} task_id {}".format(nodes.shape[0],n_label,task_id))
 
-
         # # I previouly use the following to construct graph but most of the baselines ouput 1.0 acc.
         # same_label_edge_index, _ = subgraph(nodes, edge_index, num_nodes=num_nodes,
         #                                     relabel_nodes=False)  # attention! relabel_nodes=False!!!!!!
-        same_label_edge_index=edge_index
+        same_label_edge_index = edge_index
 
         split_size = max(5, int(nodes.shape[0] / 400))
 
@@ -443,7 +448,7 @@ if __name__ == '__main__':
     #
     if dataname in ['CiteSeer', 'PubMed', 'Cora']:
         dataset = Planetoid(root='./data/', name=dataname)
-    elif dataname=='Computers':
+    elif dataname == 'Computers':
         dataset = Amazon(root='./data/', name=dataname)
 
     data = dataset.data
@@ -460,7 +465,7 @@ if __name__ == '__main__':
     # step2 split node and edge
     nodes_split(data, dataname=dataname, node_classes=node_classes)
     edge_split(data, dataname=dataname, node_classes=node_classes)
-    
+
     # step3: induced graphs
     induced_graphs_nodes(data, dataname=dataname, num_classes=node_classes, smallest_size=smallest_size, largest_size=largest_size)
     induced_graphs_edges(data, dataname=dataname, num_classes=node_classes, smallest_size=smallest_size, largest_size=largest_size)
