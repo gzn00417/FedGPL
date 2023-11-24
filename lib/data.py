@@ -33,8 +33,8 @@ def multi_class_NIG(dataset_name, num_class):
 
 def multi_class_EIG(dataset_name, num_class):
     """
-    NIG: node induced graphs
-    :param dataname: e.g. CiteSeer
+    EIG: edge induced graphs
+    :param dataset_name: e.g. CiteSeer
     :param num_class: e.g. 6 (for CiteSeer)
     :return: a batch of training graphs and testing graphs
     """
@@ -45,8 +45,8 @@ def multi_class_EIG(dataset_name, num_class):
 
 def multi_class_GIG(dataset_name, num_class):
     """
-    NIG: node induced graphs
-    :param dataname: e.g. CiteSeer
+    GIG: graph induced graphs
+    :param dataset_name: e.g. CiteSeer
     :param num_class: e.g. 6 (for CiteSeer)
     :return: a batch of training graphs and testing graphs
     """
@@ -60,16 +60,22 @@ def get_dataset(args, num_class, num_users):
     the keys are the user index and the values are the corresponding data for
     each of those users.
     """
-    dataset_name = args.data_name
-    train_lists_group = []
-    test_lists_group = []
-    for i in range(1, num_users+1):
-        if i < 4:
-            train_list, test_list = multi_class_NIG(dataset_name, num_class)
-        elif i < 7:
-            train_list, test_list = multi_class_EIG(dataset_name, num_class)
-        else:
-            train_list, test_list = multi_class_GIG(dataset_name, num_class)
-        train_lists_group.append(train_list)
-        test_lists_group.append(test_list)
-    return train_lists_group, test_lists_group
+    dataset_name = args.dataset_name
+    dataset = {
+        'node': {'train': [], 'test': []},
+        'edge': {'train': [], 'test': []},
+        'graph': {'train': [], 'test': []},
+    }
+    for i in range(num_users // 3):
+        train_data, test_data = multi_class_NIG(dataset_name, num_class)
+        dataset['node']['train'].append(train_data)
+        dataset['node']['test'].append(test_data)
+    for i in range(num_users // 3):
+        train_data, test_data = multi_class_EIG(dataset_name, num_class)
+        dataset['edge']['train'].append(train_data)
+        dataset['edge']['test'].append(test_data)
+    for i in range(num_users // 3):
+        train_data, test_data = multi_class_GIG(dataset_name, num_class)
+        dataset['graph']['train'].append(train_data)
+        dataset['graph']['test'].append(test_data)
+    return dataset

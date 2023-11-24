@@ -1,59 +1,5 @@
 import torch
-import torch.nn.functional as F
-from torch_geometric import nn
 from torch_geometric.data import Batch, Data
-
-
-class GNN(torch.nn.Module):
-    def __init__(self, input_dim, hid_dim=None, out_dim=None, gcn_layer_num=2, pool=None, gnn_type='GAT'):
-        super().__init__()
-
-        if gnn_type == 'GCN':
-            GraphConv = nn.GCNConv
-        elif gnn_type == 'GAT':
-            GraphConv = nn.GATConv
-        elif gnn_type == 'TransformerConv':
-            GraphConv = nn.TransformerConv
-        else:
-            raise KeyError('gnn_type can be only GAT, GCN and TransformerConv')
-
-        self.gnn_type = gnn_type
-        if hid_dim is None:
-            hid_dim = int(0.618 * input_dim)  # "golden cut"
-        if out_dim is None:
-            out_dim = hid_dim
-        if gcn_layer_num < 2:
-            raise ValueError('GNN layer_num should >=2 but you set {}'.format(gcn_layer_num))
-        elif gcn_layer_num == 2:
-            self.conv_layers = torch.nn.ModuleList([GraphConv(input_dim, hid_dim), GraphConv(hid_dim, out_dim)])
-        else:
-            layers = [GraphConv(input_dim, hid_dim)]
-            for i in range(gcn_layer_num - 2):
-                layers.append(GraphConv(hid_dim, hid_dim))
-            layers.append(GraphConv(hid_dim, out_dim))
-            self.conv_layers = torch.nn.ModuleList(layers)
-
-        if pool is None:
-            self.pool = nn.global_mean_pool
-        else:
-            self.pool = pool
-
-    def forward(self, x, edge_index, batch):
-        for conv in self.conv_layers[0:-1]:
-            x = conv(x, edge_index)
-            x = self.act(x)
-            x = F.dropout(x, training=self.training)
-
-        node_emb = self.conv_layers[-1](x, edge_index)
-        graph_emb = self.pool(node_emb, batch.long())
-        return graph_emb
-
-    @staticmethod
-    def act(x=None, act_type='leakyrelu'):
-        if act_type == 'leakyrelu':
-            return F.leaky_relu(x) if x is not None else torch.nn.LeakyReLU()
-        elif act_type == 'tanh':
-            return torch.tanh(x) if x is not None else torch.nn.Tanh()
 
 
 class LightPrompt(torch.nn.Module):
@@ -70,20 +16,14 @@ class LightPrompt(torch.nn.Module):
         :param inner_prune: if inner_prune is not None, then cross prune adopt prune_thre whereas inner prune adopt inner_prune
         """
         super(LightPrompt, self).__init__()
-
         self.inner_prune = inner_prune
-
         self.token_list = torch.nn.ParameterList(
             [torch.nn.Parameter(torch.empty(token_num_per_group, token_dim)) for i in range(group_num)])
+        self.token_init()
 
-        self.token_init(init_method="kaiming_uniform")
-
-    def token_init(self, init_method="kaiming_uniform"):
-        if init_method == "kaiming_uniform":
-            for token in self.token_list:
-                torch.nn.init.kaiming_uniform_(token, nonlinearity='leaky_relu', mode='fan_in', a=0.01)
-        else:
-            raise ValueError("only support kaiming_uniform init, more init methods will be included soon")
+    def token_init(self):
+        for token in self.token_list:
+            torch.nn.init.kaiming_uniform_(token, nonlinearity='leaky_relu', mode='fan_in', a=0.01)
 
     def inner_structure_update(self):
         return self.token_view()
@@ -95,7 +35,6 @@ class LightPrompt(torch.nn.Module):
         :return:
         """
         pg_list = []
-
         for i, tokens in enumerate(self.token_list):
             # inner link: token-->token
             token_dot = torch.mm(tokens, torch.transpose(tokens, 0, 1))
@@ -111,7 +50,7 @@ class LightPrompt(torch.nn.Module):
 
 
 class HeavyPrompt(LightPrompt):
-    def __init__(self, token_dim, token_num, cross_prune=0.1, inner_prune=0.01):
+    def __init__(self, token_dim, token_num=10, cross_prune=0.1, inner_prune=0.01):
         super(HeavyPrompt, self).__init__(token_dim, token_num, 1, inner_prune)  # only has one prompt graph.
         self.cross_prune = cross_prune
 
@@ -122,8 +61,6 @@ class HeavyPrompt(LightPrompt):
         :param graph_batch:
         :return:
         """
-        # device = torch.device("cuda")
-        # device = torch.device("cpu")
 
         pg = self.inner_structure_update()  # batch of prompt graph (currently only 1 prompt graph in the batch)
 
@@ -133,8 +70,6 @@ class HeavyPrompt(LightPrompt):
         re_graph_list = []
         for g in Batch.to_data_list(graph_batch):
             g_edge_index = g.edge_index + token_num
-            # pg_x = pg.x.to(device)
-            # g_x = g.x.to(device)
 
             cross_dot = torch.mm(pg.x, torch.transpose(g.x, 0, 1))
             cross_sim = torch.sigmoid(cross_dot)  # 0-1 from prompt to input graph
