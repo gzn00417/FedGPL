@@ -1,5 +1,6 @@
 import torch
 from torch_geometric.data import Batch, Data
+from torch_geometric.nn import EdgePooling, TopKPooling
 
 
 class Ours(torch.nn.Module):
@@ -10,6 +11,8 @@ class Ours(torch.nn.Module):
         self.token_list = torch.nn.ParameterList([torch.nn.Parameter(torch.empty(token_num, token_dim)) for i in range(group_num)])
         for token in self.token_list:
             torch.nn.init.kaiming_uniform_(token, nonlinearity='leaky_relu', mode='fan_in', a=0.01)
+        # self.edge_pool = EdgePooling(in_channels=token_dim, edge_score_method=EdgePooling.compute_edge_score_sigmoid, add_to_edge_score=0.0, dropout=0.3)
+        self.pool = TopKPooling(in_channels=token_dim, ratio=0.5)
 
     def token_view(self):
         pg_list = []
@@ -51,5 +54,8 @@ class Ours(torch.nn.Module):
             data = Data(x=x, edge_index=edge_index, y=y)
             re_graph_list.append(data)
 
-        graphp_batch = Batch.from_data_list(re_graph_list)
-        return graphp_batch
+        prompted_graph = Batch.from_data_list(re_graph_list)
+        x, edge_index, batch = prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch
+        # x, edge_index, batch, unpool_info = self.edge_pool(x, edge_index, batch)  # EdgePooling
+        x, edge_index, _, batch, _, _ = self.pool(x=x, edge_index=edge_index, batch=batch)  # TopKPooling
+        return x, edge_index, batch

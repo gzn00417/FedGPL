@@ -72,6 +72,8 @@ class Server(pl.LightningModule):
         return torch.utils.data.DataLoader(list(range(len(self.client_list))), batch_size=1)
 
     def on_train_epoch_start(self):
+        if self.args.federated == 'Local':
+            return
         client_prompt_weight = []
         for client in self.client_list:
             prompt_weight = copy(client.prompt.state_dict())
@@ -81,14 +83,16 @@ class Server(pl.LightningModule):
             client.prompt.load_state_dict(global_prompt_weight, strict=True)
 
     def aggregate_prompt(self, client_prompt_weight):
-        # FedAvg
-        weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
-        for weights in client_prompt_weight:
-            for key, value in weights.items():
-                weight_sum[key] += value
-        num_models = len(client_prompt_weight)
-        aggregated_prompt_weight = {k: v / num_models for k, v in weight_sum.items()}
-        return aggregated_prompt_weight
+        if self.args.federated == 'FedAvg':
+            weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
+            for weights in client_prompt_weight:
+                for key, value in weights.items():
+                    weight_sum[key] += value
+            num_models = len(client_prompt_weight)
+            aggregated_prompt_weight = {k: v / num_models for k, v in weight_sum.items()}
+            return aggregated_prompt_weight
+        else:
+            pass
 
     def training_step(self, batch, *args, **kwargs):
         client = self.client_list[int(batch[0])]
@@ -160,8 +164,8 @@ class Client(object):
         self.configure_evaluation()
 
     def forward(self, x):
-        prompted_graph = self.prompt(x)
-        graph_emb = self.pre_trained_gnn(prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch)
+        x, edge_index, batch = self.prompt(x)
+        graph_emb = self.pre_trained_gnn(x, edge_index, batch)
         return self.answer(graph_emb)
 
     def configure_optimizers(self):

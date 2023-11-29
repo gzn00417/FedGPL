@@ -13,6 +13,7 @@ def args_parser():
     parser.add_argument('--task_type', type=str, default='multi_class_classification', help="type of task")
 
     # model
+    parser.add_argument('--federated', type=str, default='FedAvg', choices=['Local', 'FedAvg'], help='')
     parser.add_argument('--algorithm', type=str, default='Ours', choices=['Ours', 'ProG'], help='algorithm you want to run')
     parser.add_argument('--gnn_type', type=str, default='TransformerConv', help="type of gnn")
     parser.add_argument('--token_number', type=int, default=10, help="number of tokens per_class")
