@@ -4,7 +4,7 @@ from torch import nn
 from torch_geometric.loader import DataLoader
 import torchmetrics
 import pytorch_lightning as pl
-from copy import copy
+from copy import deepcopy
 
 from lib.data import get_dataset
 
@@ -55,8 +55,8 @@ class Server(pl.LightningModule):
             train_dataset=train_dataset,
             val_dataset=test_dataset,
             pre_trained_gnn=self.pre_trained_gnn,
-            prompt=copy(self.global_prompt),
-            answer=copy(self.global_answer),
+            prompt=deepcopy(self.global_prompt),
+            answer=deepcopy(self.global_answer),
         )
 
     def configure_optimizers(self):
@@ -76,7 +76,7 @@ class Server(pl.LightningModule):
             return
         client_prompt_weight = []
         for client in self.client_list:
-            prompt_weight = copy(client.prompt.state_dict())
+            prompt_weight = deepcopy(client.prompt.state_dict())
             client_prompt_weight.append(prompt_weight)
         global_prompt_weight = self.aggregate_prompt(client_prompt_weight)
         for client in self.client_list:
@@ -164,7 +164,16 @@ class Client(object):
         self.configure_evaluation()
 
     def forward(self, x):
-        x, edge_index, batch = self.prompt(x)
+        self.prompt=self.prompt.to(self.server.device)
+        self.answer=self.answer.to(self.server.device)
+        x=x.to(self.server.device)
+        if self.args.algorithm == "Ours":
+            x, edge_index, batch = self.prompt(x)
+        if self.args.algorithm == "ProG":
+            batch = self.prompt(x)
+            x = batch.x
+            edge_index = batch.edge_index
+            batch = batch.batch
         graph_emb = self.pre_trained_gnn(x, edge_index, batch)
         return self.answer(graph_emb)
 
