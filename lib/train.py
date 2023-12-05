@@ -4,7 +4,7 @@ from torch import nn
 from torch_geometric.loader import DataLoader
 import torchmetrics
 import pytorch_lightning as pl
-from copy import copy
+from copy import deepcopy
 
 from lib.data import get_dataset
 
@@ -55,8 +55,8 @@ class Server(pl.LightningModule):
             train_dataset=train_dataset,
             val_dataset=test_dataset,
             pre_trained_gnn=self.pre_trained_gnn,
-            prompt=copy(self.global_prompt),
-            answer=copy(self.global_answer),
+            prompt=deepcopy(self.global_prompt),
+            answer=deepcopy(self.global_answer),
         )
 
     def configure_optimizers(self):
@@ -76,21 +76,20 @@ class Server(pl.LightningModule):
             return
         client_prompt_weight = []
         for client in self.client_list:
-            prompt_weight = copy(client.prompt.state_dict())
+            prompt_weight = deepcopy(client.prompt.state_dict())
             client_prompt_weight.append(prompt_weight)
-        global_prompt_weight = self.aggregate_prompt(client_prompt_weight)
-        for client in self.client_list:
-            client.prompt.load_state_dict(global_prompt_weight, strict=True)
+        self.aggregate_prompt(client_prompt_weight)
 
     def aggregate_prompt(self, client_prompt_weight):
+        weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
         if self.args.federated == 'FedAvg':
-            weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
             for weights in client_prompt_weight:
                 for key, value in weights.items():
                     weight_sum[key] += value
             num_models = len(client_prompt_weight)
             aggregated_prompt_weight = {k: v / num_models for k, v in weight_sum.items()}
-            return aggregated_prompt_weight
+            for client in self.client_list:
+                client.prompt.load_state_dict(aggregated_prompt_weight, strict=True)
         else:
             pass
 

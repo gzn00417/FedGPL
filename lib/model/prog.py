@@ -85,5 +85,6 @@ class HeavyPrompt(LightPrompt):
             data = Data(x=x, edge_index=edge_index, y=y)
             re_graph_list.append(data)
 
-        graphp_batch = Batch.from_data_list(re_graph_list)
-        return graphp_batch
+        prompted_graph = Batch.from_data_list(re_graph_list)
+        x, edge_index, batch = prompted_graph.x, prompted_graph.edge_index, prompted_graph.batch
+        return x, edge_index, batch
