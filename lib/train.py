@@ -163,16 +163,7 @@ class Client(object):
         self.configure_evaluation()
 
     def forward(self, x):
-        self.prompt=self.prompt.to(self.server.device)
-        self.answer=self.answer.to(self.server.device)
-        x=x.to(self.server.device)
-        if self.args.algorithm == "Ours":
-            x, edge_index, batch = self.prompt(x)
-        if self.args.algorithm == "ProG":
-            batch = self.prompt(x)
-            x = batch.x
-            edge_index = batch.edge_index
-            batch = batch.batch
+        x, edge_index, batch = self.prompt(x)
         graph_emb = self.pre_trained_gnn(x, edge_index, batch)
         return self.answer(graph_emb)
 
