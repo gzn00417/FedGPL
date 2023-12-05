@@ -49,7 +49,6 @@ class Server(pl.LightningModule):
 
     def init_client(self, task, train_dataset, test_dataset):
         return Client(
-            server=self,
             task=task,
             args=self.args,
             train_dataset=train_dataset,
@@ -70,6 +69,10 @@ class Server(pl.LightningModule):
 
     def test_dataloader(self):
         return torch.utils.data.DataLoader(list(range(len(self.client_list))), batch_size=1)
+
+    def on_fit_start(self):
+        for client in self.client_list:
+            client.to(self.device)
 
     def on_train_epoch_start(self):
         if self.args.federated == 'Local':
@@ -95,7 +98,7 @@ class Server(pl.LightningModule):
 
     def training_step(self, batch, *args, **kwargs):
         client = self.client_list[int(batch[0])]
-        client.train()
+        client.train(self.device)
 
     def on_train_epoch_end(self):
         loss = [client.loss for client in self.client_list]
@@ -104,7 +107,7 @@ class Server(pl.LightningModule):
 
     def validation_step(self, batch, *args, **kwargs):
         client = self.client_list[int(batch[0])]
-        client.validate()
+        client.validate(self.device)
         self.validation_step_outputs[client.task].append({'ACC': client.acc, 'F1': client.f1})
 
     def on_validation_epoch_end(self):
@@ -117,14 +120,14 @@ class Server(pl.LightningModule):
             self.validation_step_outputs[task].clear()
             task_acc = sum(client_acc) / len(client_acc)
             task_f1 = sum(client_f1) / len(client_f1)
-            self.log(f'ACC_{task}', task_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-            self.log(f'F1_{task}', task_f1, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+            self.log(f'ACC_{task}', task_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+            self.log(f'F1_{task}', task_f1, on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
             overall_acc.append(task_acc)
             overall_f1.append(task_f1)
         overall_acc = sum(overall_acc) / len(overall_acc)
         overall_f1 = sum(overall_f1) / len(overall_f1)
-        self.log('ACC', overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('F1', overall_f1, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('ACC', overall_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True, sync_dist=True)
+        self.log('F1', overall_f1, on_step=False, on_epoch=True, prog_bar=False, logger=True, sync_dist=True)
 
     def test_step(self, *args, **kwargs):
         self.validation_step(*args, **kwargs)
@@ -137,7 +140,6 @@ class Client(object):
 
     def __init__(
         self,
-        server: Server,
         task: str,
         args,
         train_dataset,
@@ -148,7 +150,6 @@ class Client(object):
     ):
         super().__init__()
         self.automatic_optimization = False
-        self.server = server
         self.task = task
         self.args = args
         # data
@@ -179,9 +180,15 @@ class Client(object):
         self.f1_function = torchmetrics.classification.F1Score(task="multiclass", num_classes=self.args.num_classes, average="macro")
         self.loss, self.acc, self.f1 = None, None, None
 
-    def train(self):
+    def to(self, device):
+        self.prompt = self.prompt.to(device)
+        self.answer = self.answer.to(device)
+        self.accuracy_function = self.accuracy_function.to(device)
+        self.f1_function = self.f1_function.to(device)
+
+    def train(self, device):
         for batch in self.train_dataloader:
-            pred = self.forward(batch.to(self.server.device))
+            pred = self.forward(batch.to(device))
             loss = self.loss_function(pred, batch.y)
             self.loss = loss.item()
             self.optimizer_prompt.zero_grad()
@@ -192,11 +199,11 @@ class Client(object):
             self.scheduler_prompt.step()
             self.scheduler_answer.step()
 
-    def validate(self):
+    def validate(self, device):
         for batch in self.val_dataloader:
-            pred = self.forward(batch.to(self.server.device))
-            y = batch.y.cpu()
-            pred_class = torch.argmax(pred, dim=1).cpu()
+            pred = self.forward(batch.to(device))
+            y = batch.y.to(device)
+            pred_class = torch.argmax(pred, dim=1).to(device)
             acc = self.accuracy_function(pred_class, y)
             f1 = self.f1_function(pred_class, y)
         acc = self.accuracy_function.compute()

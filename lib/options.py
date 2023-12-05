@@ -10,7 +10,6 @@ def args_parser():
     parser.add_argument('--dataset_name', type=str, default='CiteSeer', help='name of dataset')
     parser.add_argument('--num_classes', type=int, default=6, help="number of node classes")
     parser.add_argument('--num_users', type=int, default=9, help="number of users")
-    parser.add_argument('--task_type', type=str, default='multi_class_classification', help="type of task")
 
     # model
     parser.add_argument('--federated', type=str, default='FedAvg', choices=['Local', 'FedAvg'], help='')
