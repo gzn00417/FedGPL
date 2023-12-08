@@ -50,7 +50,7 @@ class LightPrompt(torch.nn.Module):
 
 
 class HeavyPrompt(LightPrompt):
-    def __init__(self, token_dim, token_num=10, cross_prune=0.1, inner_prune=0.01):
+    def __init__(self, token_dim, token_num=10, cross_prune=0.1, inner_prune=0.3):
         super(HeavyPrompt, self).__init__(token_dim, token_num, 1, inner_prune)  # only has one prompt graph.
         self.cross_prune = cross_prune
 
