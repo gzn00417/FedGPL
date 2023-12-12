@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 from copy import deepcopy
 
 from .data import get_dataset
+from .model.federated import *
 
 
 class Server(pl.LightningModule):
@@ -77,26 +78,10 @@ class Server(pl.LightningModule):
         if self.hparams.federated == 'Local':
             return
         elif self.hparams.federated == 'FedAvg':
-            client_list = self.client_list
-            client_prompt_weight = [deepcopy(client.prompt.state_dict()) for client in client_list]
-            weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
-            for weights in client_prompt_weight:
-                for key, value in weights.items():
-                    weight_sum[key] += value
-            aggregated_prompt_weight = {k: v / len(client_prompt_weight) for k, v in weight_sum.items()}
-            for client in client_list:
-                client.prompt.load_state_dict(aggregated_prompt_weight, strict=True)
+            fed_avg_prompt(self.client_list)
+            fed_avg_answer(self.client_list)
         elif self.hparams.federated == 'TaskAvg':
-            for task in ['node', 'edge', 'graph']:
-                client_list = self.client_list_by_task[task]
-                client_prompt_weight = [deepcopy(client.prompt.state_dict()) for client in client_list]
-                weight_sum = {k: torch.zeros_like(v) for k, v in client_prompt_weight[0].items()}
-                for weights in client_prompt_weight:
-                    for key, value in weights.items():
-                        weight_sum[key] += value
-                aggregated_prompt_weight = {k: v / len(client_prompt_weight) for k, v in weight_sum.items()}
-                for client in client_list:
-                    client.prompt.load_state_dict(aggregated_prompt_weight, strict=True)
+            weighted_task_fed_avg(self.client_list, self.client_list_by_task, 0.1, 0.2, 0.7)
         else:
             raise Exception(f'Unknown federated optimization for {self.hparams.federated}.')
 
