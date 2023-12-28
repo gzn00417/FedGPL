@@ -1,9 +1,11 @@
 import pickle as pk
 from random import shuffle
 from torch_geometric.data import Batch
+import numpy as np
+import matplotlib.pyplot as plt
 
 
-def collect_data(dataset_name, num_class, task_type: str = 'node', dataset_type: str = 'train'):
+def collect_data_iid(num_users, dataset_name, num_class, task_type: str = 'node', dataset_type: str = 'train'):
     tmp = {'node': 0, 'edge': 1, 'graph': 2}.get(task_type) * num_class
     data = []
     for task_id in range(num_class):
@@ -16,10 +18,28 @@ def collect_data(dataset_name, num_class, task_type: str = 'node', dataset_type:
                 g.y = task_id
                 data.append(g)
     shuffle(data)
-    return Batch.from_data_list(data)
+    client_samples = []
+    for i in range(num_users):
+        client_samples.append(Batch.from_data_list(data))
+
+    return client_samples
 
 
-def get_dataset(dataset_name, num_class, num_users):
+def collect_data_noniid(num_users, dataset_name, num_class, task_type: str = 'node', dataset_type: str = 'train', dir_alpha = 0.3):
+    datas = collect_data_iid(num_users, dataset_name, num_class, task_type, dataset_type)
+    targets = datas[0].y.tolist()
+
+    client_dict = hetero_dir_partition(targets, num_users, num_class, dir_alpha, min_require_size=None)
+
+    client_samples = []
+
+    for client_id, indices in client_dict.items():
+        client_samples.append(Batch.from_data_list(datas[0][indices]))
+
+    return client_samples
+
+
+def get_dataset(dataset_name, num_class, num_users, type, alpha=0.3):
     """ Returns train and test datasets and a user group which is a dict where
     the keys are the user index and the values are the corresponding data for
     each of those users.
@@ -29,22 +49,58 @@ def get_dataset(dataset_name, num_class, num_users):
         'edge': {'train': [], 'test': []},
         'graph': {'train': [], 'test': []},
     }
-    # node
-    for i in range(num_users // 3):
-        train_data = collect_data(dataset_name, num_class, 'node', 'train')
-        test_data = collect_data(dataset_name, num_class, 'node', 'test')
-        dataset['node']['train'].append(train_data)
-        dataset['node']['test'].append(test_data)
-    # edge
-    for i in range(num_users // 3):
-        train_data = collect_data(dataset_name, num_class, 'edge', 'train')
-        test_data = collect_data(dataset_name, num_class, 'edge', 'test')
-        dataset['edge']['train'].append(train_data)
-        dataset['edge']['test'].append(test_data)
-    # graph
-    for i in range(num_users // 3):
-        train_data = collect_data(dataset_name, num_class, 'graph', 'train')
-        test_data = collect_data(dataset_name, num_class, 'graph', 'test')
-        dataset['graph']['train'].append(train_data)
-        dataset['graph']['test'].append(test_data)
+    if type == 'iid':
+        # node
+        dataset['node']['train'] = collect_data_iid(num_users, dataset_name, num_class, 'node', 'train')
+        dataset['node']['test'] = collect_data_iid(num_users, dataset_name, num_class, 'node', 'test')
+        # edge
+        dataset['edge']['train'] = collect_data_iid(num_users, dataset_name, num_class, 'edge', 'train')
+        dataset['edge']['test'] = collect_data_iid(num_users, dataset_name, num_class, 'edge', 'test')
+        # graph
+        dataset['graph']['train'] = collect_data_iid(num_users, dataset_name, num_class, 'graph', 'train')
+        dataset['graph']['test'] = collect_data_iid(num_users, dataset_name, num_class, 'graph', 'test')
+    else:
+        # node
+        dataset['node']['train'] = collect_data_noniid(num_users, dataset_name, num_class, 'node', 'train', alpha)
+        dataset['node']['test'] = collect_data_noniid(num_users, dataset_name, num_class, 'node', 'test', alpha)
+        # edge
+        dataset['edge']['train'] = collect_data_noniid(num_users, dataset_name, num_class, 'edge', 'train', alpha)
+        dataset['edge']['test'] = collect_data_noniid(num_users, dataset_name, num_class, 'edge', 'test', alpha)
+        # graph
+        dataset['graph']['train'] = collect_data_noniid(num_users, dataset_name, num_class, 'graph', 'train', alpha)
+        dataset['graph']['test'] = collect_data_noniid(num_users, dataset_name, num_class, 'graph', 'test', alpha)
     return dataset
+
+
+def hetero_dir_partition(targets, num_clients, num_classes, dir_alpha, min_require_size=None):
+    if min_require_size is None:
+        min_require_size = num_classes
+    if not isinstance(targets, np.ndarray):
+        targets = np.array(targets)
+    num_samples = targets.shape[0]
+
+    min_size = 0
+
+    while min_size < min_require_size:
+        idx_batch = [[] for _ in range(num_clients)]
+
+        for k in range(num_classes):
+            idx_k = np.where(targets == k)[0]
+            np.random.shuffle(idx_k)
+            proportions = np.random.dirichlet(np.repeat(dir_alpha, num_clients))
+            proportions = np.array(
+                [p * (len(idx_j) < num_samples / num_clients) for p, idx_j in
+                 zip(proportions, idx_batch)])
+            proportions = proportions / proportions.sum()
+            proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
+            idx_batch = [idx_j + idx.tolist() for idx_j, idx in
+                         zip(idx_batch, np.split(idx_k, proportions))]
+
+            min_size = min([len(idx_j) for idx_j in idx_batch])
+
+    client_dict = dict()
+    for cid in range(num_clients):
+        np.random.shuffle(idx_batch[cid])
+        client_dict[cid] = np.array(idx_batch[cid])
+    return client_dict
+

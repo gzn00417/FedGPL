@@ -39,5 +39,12 @@ def args_parser():
     parser.add_argument('--gamma_answer', type=float, default=0.95, help='')
     parser.add_argument('--step_size_answer', type=int, default=128, help='')
 
+    # data distribution
+    parser.add_argument('--data_type', type=str, default='iid', help='')
+    parser.add_argument('--alpha', type=float, default=0.3, help='')
+
+    # privacy
+    parser.add_argument('--epsilon', type=float, default=50, help='')
+
     args = parser.parse_args()
     return args

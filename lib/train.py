@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from .data import get_dataset
 from .model.federated import *
-
+from .model.dp import *
 
 class Server(pl.LightningModule):
 
@@ -27,7 +27,7 @@ class Server(pl.LightningModule):
 
     def init_clients(self):
         # init data
-        dataset = get_dataset(self.hparams.dataset_name, self.hparams.num_classes, self.hparams.num_users)
+        dataset = get_dataset(self.hparams.dataset_name, self.hparams.num_classes, self.hparams.num_users, self.hparams.data_type, self.hparams.alpha)
         self.client_list = []
         self.client_list_by_task: Dict[str, List] = {'node': [], 'edge': [], 'graph': []}
         num_clients_per_task = self.hparams.num_users // 3
@@ -75,13 +75,20 @@ class Server(pl.LightningModule):
             client.to(self.device)
 
     def on_train_epoch_start(self):
+
         if self.hparams.federated == 'Local':
             return
         elif self.hparams.federated == 'FedAvg':
             fed_avg_prompt(self.client_list)
             fed_avg_answer(self.client_list)
         elif self.hparams.federated == 'TaskAvg':
-            weighted_task_fed_avg(self.client_list, self.client_list_by_task, 0.1, 0.2, 0.7)
+            if self.current_epoch != 0:
+                # add dp (Federated Phase)
+                for client in self.client_list:
+                    client.prompt.load_state_dict(add_noise_for_state_dict(client.prompt.state_dict(), self.hparams.epsilon))
+                    client.answer.load_state_dict(add_noise_for_state_dict(client.answer.state_dict(), self.hparams.epsilon))
+                prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
+                weighted_task_fed_avg(self.client_list_by_task, prompt_coefficient, answer_coefficient, self.hparams.epsilon)
         else:
             raise Exception(f'Unknown federated optimization for {self.hparams.federated}.')
 
@@ -135,7 +142,7 @@ class Client(object):
         val_dataset,
         pre_trained_gnn: torch.nn.Module,
         prompt: torch.nn.Module,
-        answer: torch.nn.Module
+        answer: torch.nn.Module,
     ):
         super().__init__()
         self.automatic_optimization = False
@@ -148,13 +155,23 @@ class Client(object):
         self.pre_trained_gnn = pre_trained_gnn
         self.prompt = prompt
         self.answer = answer
+
+        self.prompt_last_epoch = prompt
+        self.answer_last_epoch = answer
+
+        # pravcy
+        self.epsilon = self.hparams.epsilon
+
         # init
         self.configure_optimizers()
         self.configure_evaluation()
 
     def forward(self, x):
         x, edge_index, batch = self.prompt(x)
+
         graph_emb = self.pre_trained_gnn(x, edge_index, batch)
+
+        # return self.answer(graph_emb), graph_emb.clone().detach().requires_grad_(True), graph_emb, x.clone().detach().requires_grad_(True), x
         return self.answer(graph_emb)
 
     def configure_optimizers(self):
@@ -176,18 +193,40 @@ class Client(object):
         self.f1_function = self.f1_function.to(device)
 
     def train(self, device: str, local_epochs: int = 5):
+        self.prompt_last_epoch = deepcopy(self.prompt)
+        self.answer_last_epoch = deepcopy(self.answer)
         for _ in range(local_epochs):
             for batch in self.train_dataloader:
-                pred = self.forward(batch.to(device))
+                x, edge_index, tbatch = self.prompt(batch.to(device))
+                # add dp (Local Training Phase)
+                x = add_laplace_noise(x, self.epsilon)
+                x_rg = x.clone().detach().requires_grad_(True)
+
+                graph_emb = self.pre_trained_gnn(x_rg, edge_index, tbatch)
+                graph_emb_rg = graph_emb.clone().detach().requires_grad_(True)
+
+                pred = self.answer(graph_emb_rg)
                 loss = self.loss_function(pred, batch.y)
                 self.loss = loss.item()
-                self.optimizer_prompt.zero_grad()
                 self.optimizer_answer.zero_grad()
                 loss.backward()
-                self.optimizer_prompt.step()
                 self.optimizer_answer.step()
-                self.scheduler_prompt.step()
-                self.scheduler_answer.step()
+                embedding_grad = graph_emb_rg.grad.clone()
+                # add dp (Local Training Phase)
+                embedding_grad = add_laplace_noise(embedding_grad, self.epsilon)
+
+                if x_rg.grad is not None:
+                    x_rg.grad.data.zero_()
+                graph_emb.backward(embedding_grad)
+                
+                x_grad = x_rg.grad.clone()
+                # add dp (Local Training Phase)
+                x_grad = add_laplace_noise(x_grad, self.epsilon)
+
+                self.optimizer_prompt.zero_grad()
+                x.backward(x_grad)
+                self.optimizer_prompt.step()
+
 
     def validate(self, device: str):
         for batch in self.val_dataloader:
