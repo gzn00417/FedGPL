@@ -9,6 +9,7 @@ from copy import deepcopy
 from .data import get_dataset
 from .model.federated import *
 from .model.dp import *
+from .serialization import *
 
 class Server(pl.LightningModule):
 
@@ -24,6 +25,10 @@ class Server(pl.LightningModule):
         self.global_answer = answer
         # init clients
         self.init_clients()
+
+        # global control varient for SCAFFOLD
+        self.global_c_prompt = torch.zeros_like(SerializationTool.serialize_model(self.global_prompt))
+        self.global_c_answer = torch.zeros_like(SerializationTool.serialize_model(self.global_answer))
 
     def init_clients(self):
         # init data
@@ -77,24 +82,57 @@ class Server(pl.LightningModule):
     def on_train_epoch_start(self):
 
         if self.hparams.federated == 'Local':
+            prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
+            
             return
         elif self.hparams.federated == 'FedAvg':
             fed_avg_prompt(self.client_list)
             fed_avg_answer(self.client_list)
+            prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
         elif self.hparams.federated == 'TaskAvg':
-            if self.current_epoch != 0:
+            if self.current_epoch > 0:
                 # add dp (Federated Phase)
                 for client in self.client_list:
                     client.prompt.load_state_dict(add_noise_for_state_dict(client.prompt.state_dict(), self.hparams.epsilon))
                     client.answer.load_state_dict(add_noise_for_state_dict(client.answer.state_dict(), self.hparams.epsilon))
                 prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
                 weighted_task_fed_avg(self.client_list_by_task, prompt_coefficient, answer_coefficient, self.hparams.epsilon)
+            else:
+                fed_avg_prompt(self.client_list)
+                fed_avg_answer(self.client_list)
+        elif self.hparams.federated == 'scaffold':
+            if self.current_epoch >-1:
+                dprompt = []
+                danswer = []
+                dc_prompt = []
+                dc_answer = []
+                for client in self.client_list:
+                    dprompt.append(client.dprompt)
+                    danswer.append(client.danswer)
+
+                    dc_prompt.append(client.dc_prompt)
+                    dc_answer.append(client.dc_answer)
+                self.global_prompt = self.global_prompt.to('cuda')
+                self.global_answer = self.global_answer.to('cuda')
+                SerializationTool.deserialize_model(self.global_prompt, avg_c(dprompt).to('cuda'), "add", self.hparams.lr_global_prompt)
+                SerializationTool.deserialize_model(self.global_answer, avg_c(danswer).to('cuda'), "add", self.hparams.lr_global_answer)
+                self.global_c_prompt = self.global_c_prompt.to('cuda')
+                self.global_c_answer = self.global_c_answer.to('cuda')
+                self.global_c_prompt += avg_c(dc_prompt).to('cuda')
+                self.global_c_answer += avg_c(dc_answer).to('cuda')
+
         else:
             raise Exception(f'Unknown federated optimization for {self.hparams.federated}.')
 
     def training_step(self, batch, *args, **kwargs):
         client = self.client_list[int(batch[0])]
-        client.train(self.device, self.hparams.local_epochs)
+        if self.hparams.federated == 'scaffold':
+            if self.current_epoch > 10:
+                client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
+            else:
+                client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
+        else:
+            client.train(self.device, self.hparams.local_epochs, None, None)
 
     def on_train_epoch_end(self):
         loss = [client.loss for client in self.client_list]
@@ -166,6 +204,16 @@ class Client(object):
         self.configure_optimizers()
         self.configure_evaluation()
 
+        # client's control varien for SCAFFOLD
+        self.c_prompt = torch.zeros_like(SerializationTool.serialize_model(self.prompt))
+        self.c_answer = torch.zeros_like(SerializationTool.serialize_model(self.answer))
+
+        self.dc_prompt = torch.zeros_like(self.c_prompt)
+        self.dc_answer = torch.zeros_like(self.c_answer)
+
+        self.dprompt = torch.zeros_like(SerializationTool.serialize_model(self.prompt))
+        self.danswer = torch.zeros_like(SerializationTool.serialize_model(self.answer))
+
     def forward(self, x):
         x, edge_index, batch = self.prompt(x)
 
@@ -192,40 +240,83 @@ class Client(object):
         self.accuracy_function = self.accuracy_function.to(device)
         self.f1_function = self.f1_function.to(device)
 
-    def train(self, device: str, local_epochs: int = 5):
+    def train(self, device: str, local_epochs: int = 5, global_c_answer=None, global_c_prompt=None, flag = 1):
         self.prompt_last_epoch = deepcopy(self.prompt)
         self.answer_last_epoch = deepcopy(self.answer)
         for _ in range(local_epochs):
             for batch in self.train_dataloader:
-                x, edge_index, tbatch = self.prompt(batch.to(device))
-                # add dp (Local Training Phase)
-                x = add_laplace_noise(x, self.epsilon)
-                x_rg = x.clone().detach().requires_grad_(True)
+                if self.hparams.federated == 'scaffold':
+                    x, edge_index, tbatch = self.prompt(batch.to(device))
+                    graph_emb = self.pre_trained_gnn(x, edge_index, tbatch)
+                    pred = self.answer(graph_emb)
+                    loss = self.loss_function(pred, batch.y)
+                    self.loss = loss.item()
+                    self.optimizer_answer.zero_grad()
+                    self.optimizer_prompt.zero_grad()
+                    loss.backward()
+                    for param_prompt, param_answer, c_i_prompt, c_i_answer, c_g_prompt, c_g_answer in zip(self.prompt.parameters(), self.answer.parameters(),
+                                                                                                          self.c_prompt, self.c_answer, 
+                                                                                                          global_c_prompt, global_c_answer):
+                        if flag == 1:
+                            param_prompt.grad = param_prompt.grad - c_i_prompt + c_g_prompt
+                            param_answer.grad = param_answer.grad - c_i_answer + c_g_answer
+                        else:
+                            param_prompt.grad = param_prompt.grad - torch.zeros_like(c_i_prompt) + torch.zeros_like(c_g_prompt)
+                            param_answer.grad = param_answer.grad - torch.zeros_like(c_i_answer) + torch.zeros_like(c_g_answer)
+                    self.optimizer_prompt.step()
+                    self.optimizer_answer.step()
+                else:
+                    x, edge_index, tbatch = self.prompt(batch.to(device))
+                    # add dp (Local Training Phase)
+                    x = add_laplace_noise(x, self.epsilon)
+                    x_rg = x.clone().detach().requires_grad_(True)
 
-                graph_emb = self.pre_trained_gnn(x_rg, edge_index, tbatch)
-                graph_emb_rg = graph_emb.clone().detach().requires_grad_(True)
+                    graph_emb = self.pre_trained_gnn(x_rg, edge_index, tbatch)
+                    graph_emb_rg = graph_emb.clone().detach().requires_grad_(True)
 
-                pred = self.answer(graph_emb_rg)
-                loss = self.loss_function(pred, batch.y)
-                self.loss = loss.item()
-                self.optimizer_answer.zero_grad()
-                loss.backward()
-                self.optimizer_answer.step()
-                embedding_grad = graph_emb_rg.grad.clone()
-                # add dp (Local Training Phase)
-                embedding_grad = add_laplace_noise(embedding_grad, self.epsilon)
+                    pred = self.answer(graph_emb_rg)
+                    loss = self.loss_function(pred, batch.y)
+                    self.loss = loss.item()
+                    self.optimizer_answer.zero_grad()
+                    loss.backward()
+                    self.optimizer_answer.step()
+                    embedding_grad = graph_emb_rg.grad.clone()
+                    # add dp (Local Training Phase)
+                    embedding_grad = add_laplace_noise(embedding_grad, self.epsilon)
 
-                if x_rg.grad is not None:
-                    x_rg.grad.data.zero_()
-                graph_emb.backward(embedding_grad)
-                
-                x_grad = x_rg.grad.clone()
-                # add dp (Local Training Phase)
-                x_grad = add_laplace_noise(x_grad, self.epsilon)
+                    if x_rg.grad is not None:
+                        x_rg.grad.data.zero_()
+                    graph_emb.backward(embedding_grad)
+                    
+                    x_grad = x_rg.grad.clone()
+                    # add dp (Local Training Phase)
+                    x_grad = add_laplace_noise(x_grad, self.epsilon)
 
-                self.optimizer_prompt.zero_grad()
-                x.backward(x_grad)
-                self.optimizer_prompt.step()
+                    self.optimizer_prompt.zero_grad()
+                    x.backward(x_grad)
+                    self.optimizer_prompt.step()
+        if self.hparams.federated == 'scaffold':
+            last_epoch_prompt_params = SerializationTool.serialize_model(self.prompt_last_epoch)
+            last_epoch_answer_params = SerializationTool.serialize_model(self.answer_last_epoch)
+            now_prompt_params = SerializationTool.serialize_model(self.prompt)
+            now_answer_params = SerializationTool.serialize_model(self.answer)
+
+            self.dprompt = now_prompt_params - last_epoch_prompt_params
+            self.danswer = now_answer_params - last_epoch_answer_params
+            global_c_prompt = global_c_prompt.to('cuda')
+            global_c_answer = global_c_answer.to('cuda')
+
+            self.dc_prompt = -1.0 / (local_epochs * len(self.train_dataloader) * self.hparams.lr_prompt) * self.dprompt - global_c_prompt
+            self.dc_answer = -1.0 / (local_epochs * len(self.train_dataloader) * self.hparams.lr_answer) * self.danswer - global_c_answer
+            self.c_prompt = self.c_prompt.to('cuda')
+            self.c_answer = self.c_answer.to('cuda')
+            self.c_prompt += self.dc_prompt
+            self.c_answer += self.dc_answer
+            if flag == 0:
+                self.c_prompt = torch.zeros_like(self.c_prompt)
+                self.c_answer = torch.zeros_like(self.c_answer)
+                self.dc_prompt = torch.zeros_like(self.dc_prompt)
+                self.dc_answer = torch.zeros_like(self.dc_answer)
 
 
     def validate(self, device: str):

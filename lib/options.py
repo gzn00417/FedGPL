@@ -12,7 +12,7 @@ def args_parser():
     parser.add_argument('-C', '--num_users', type=int, default=9, help='number of users')
 
     # model
-    parser.add_argument('-F', '--federated', type=str, default='FedAvg', choices=['Local', 'FedAvg', 'TaskAvg'], help='')
+    parser.add_argument('-F', '--federated', type=str, default='FedAvg', choices=['Local', 'FedAvg', 'TaskAvg', 'scaffold'], help='')
     parser.add_argument('-A', '--algorithm', type=str, default='Ours', choices=['Ours', 'ProG'], help='algorithm you want to run')
     parser.add_argument('-G', '--gnn_type', type=str, default='TransformerConv', help='type of gnn')
     parser.add_argument('-T', '--token_number', type=int, default=0, help='number of tokens per_class')
@@ -29,12 +29,12 @@ def args_parser():
     parser.add_argument('--monitor', type=str, default='ACC', help='training monitor')
     parser.add_argument('--patience', type=int, default=16, help='')
     # train prompt
-    parser.add_argument('--lr_prompt', type=float, default=0.02, help='')
+    parser.add_argument('--lr_prompt', type=float, default=0.1, help='')
     parser.add_argument('--wd_prompt', type=float, default=1e-6, help='')
     parser.add_argument('--gamma_prompt', type=float, default=0.95, help='')
     parser.add_argument('--step_size_prompt', type=int, default=64, help='')
     # train answer
-    parser.add_argument('--lr_answer', type=float, default=0.02, help='')
+    parser.add_argument('--lr_answer', type=float, default=0.1, help='')
     parser.add_argument('--wd_answer', type=float, default=1e-8, help='')
     parser.add_argument('--gamma_answer', type=float, default=0.95, help='')
     parser.add_argument('--step_size_answer', type=int, default=128, help='')
@@ -45,6 +45,12 @@ def args_parser():
 
     # privacy
     parser.add_argument('--epsilon', type=float, default=50, help='')
+
+    # scaffold
+    parser.add_argument('--lr_global_control_prompt', type=float, default=0.02)
+    parser.add_argument('--lr_global_control_answer', type=float, default=0.02)
+    parser.add_argument('--lr_global_prompt', type=float, default=0.02)
+    parser.add_argument('--lr_global_answer', type=float, default=0.02)
 
     args = parser.parse_args()
     return args
