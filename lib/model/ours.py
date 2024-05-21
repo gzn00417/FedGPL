@@ -73,6 +73,7 @@ def filter_adj(
     edge_index: Tensor,
     edge_attr: Optional[Tensor],
     perm: Tensor,
+    scores: Tensor,  # 新增的评分矩阵
     num_nodes: Optional[int] = None,
 ) -> Tuple[Tensor, Optional[Tensor]]:
     num_nodes = maybe_num_nodes(edge_index, num_nodes)
@@ -88,9 +89,23 @@ def filter_adj(
 
     if edge_attr is not None:
         edge_attr = edge_attr[mask]
+    scores = scores[mask] 
+
+    num_edges = scores.size(0)
+    topk = int(0.5 * num_edges)
+    topk_indices = scores.topk(topk, largest=True).indices
+
+    row = row[topk_indices]
+    col = col[topk_indices]
+    if edge_attr is not None:
+        edge_attr = edge_attr[topk_indices]
 
     return torch.stack([row, col], dim=0), edge_attr
 
+def maybe_num_nodes(edge_index: Tensor, num_nodes: Optional[int] = None) -> int:
+    if num_nodes is not None:
+        return num_nodes
+    return int(edge_index.max()) + 1
 
 class Ours(torch.nn.Module):
     def __init__(self, token_dim, ratio=0.5):
@@ -131,7 +146,8 @@ class Ours(torch.nn.Module):
         x = self.multiplier * x if self.multiplier != 1 else x
 
         batch = batch[perm]
-        edge_index, edge_attr = filter_adj(edge_index, edge_attr, perm,
+        edge_scores = torch.abs(score[edge_index[0]] - score[edge_index[1]])
+        edge_index, edge_attr = filter_adj(edge_index, edge_attr, perm, edge_scores,
                                            num_nodes=score.size(0))
 
         return x, edge_index, edge_attr, batch, perm, score[perm]
