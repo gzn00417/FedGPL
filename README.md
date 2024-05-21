@@ -2,24 +2,22 @@
 
 ## Running experiments
 
-* To train the ProG on CiteSeer in a multi-task manner, with shots = 100, token number = 10:
+* To train the VPG on Cora with HiDTA and ratio=0.1:
     ```
-    python main.py --algorithm ProG --data_name CiteSeer --shots 100 --token_number 10
+    python main.py --algorithm VPG --dataset_name Cora --federated HiDTA --num_classes 7 --ratio 0.1
     ```
 
 ## Options for Training
 
-* ```--algorithm:``` Algorithm you want to run. Default: 'ProG'. Options: Ours, 
+* ```--algorithm:``` Algorithm you want to run. Default: 'ProG'. Options: VPG, 
 * ```--data_name``` Name of dataset. Default: 'CiteSeer'. Options: Citeseer, 
-* ```--shots:``` Num of shots. Default: '100',
+* ```--federated:``` Federated algorithm you want to run. Default: HiDTA
 * ```--num_classes:``` Number of node classes. Default: 6, for CiteSeer,
 * ```--num_users:``` Number of users. Default: 9,
 * ```--gnn_type:``` Type of GNN. Default: 'TransformerConv',
-* ```--task_type:``` Type of task. Default: 'multi_class_classification',
 * ```--rounds:``` Number of global communication rounds. Default: 10,
-* ```--local_epochs:``` Number of local training epochs. Default: 5.
+* ```--local_epochs:``` Number of local training epochs. Default: 1.
 * ```--seed:``` Seed. Default: 2023.
-* ```--token_number:``` Number of tokens per_class. Default: 10.
 
 ## Data Preprocess
 Procedure: 
