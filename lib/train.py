@@ -82,14 +82,14 @@ class Server(pl.LightningModule):
     def on_train_epoch_start(self):
 
         if self.hparams.federated == 'Local':
-            prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
+            # prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
             
             return
         elif self.hparams.federated == 'FedAvg':
             fed_avg_prompt(self.client_list)
             fed_avg_answer(self.client_list)
             prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
-        elif self.hparams.federated == 'TaskAvg':
+        elif self.hparams.federated == 'HiDTA':
             if self.current_epoch > 0:
                 # add dp (Federated Phase)
                 for client in self.client_list:
@@ -147,6 +147,8 @@ class Server(pl.LightningModule):
     def on_validation_epoch_end(self):
         overall_acc, overall_f1 = [], []
         for task in ['node', 'edge', 'graph']:
+            # if task == 'node':
+            #     continue
             client_acc, client_f1 = [], []
             for item in self.validation_step_outputs[task]:
                 client_acc.append(item['ACC'])
