@@ -8,29 +8,37 @@ import wandb
 
 from lib import *
 
-os.environ['WANDB_API_KEY'] = '0ac5494dda18ee4c0537c51e9c7df96769f4a5cf'
+os.environ['WANDB_API_KEY'] = ''
 wandb.login()
 wandb.init(
-    entity='gzn',
-    project='lightning_logs',
+    entity='',
+    project='FedGPL',
 )
 
 if __name__ == '__main__':
     # hyper parameters
     args = args_parser()
     pl.seed_everything(args.seed)
-
+    print(args.few_shot)
+    if args.algorithm == 'VPG':
+        wandb.run.name = str(args.dataset_name) + '_' + str(args.federated) + '_' + 'E+G' + '_' + str(args.algorithm) + '' + str(args.ratio) + str(args.few_shot) + 'new'
+    else:
+        wandb.run.name = str(args.dataset_name) + '_' + str(args.federated) + '_' + 'E+G' + '_' + str(args.algorithm) + '' + str(args.cross_prune) + str(args.few_shot) + 'new'
     # model
     pre_trained_gnn = GNN(args.input_dim, hid_dim=args.hidden_dim, out_dim=args.hidden_dim, gcn_layer_num=2, gnn_type=args.gnn_type)
-    pre_trained_gnn.load_state_dict(torch.load(f'./pre_trained_gnn/{args.dataset_name}.{args.pre_train_algorithm}.{args.gnn_type}.pth'))
+    pre_trained_gnn.load_state_dict(torch.load(f'./pre_trained_gnn/{args.dataset_name}.{args.pre_train_algorithm}.{args.gnn_type}.pth', map_location='cuda:3'))
     for p in pre_trained_gnn.parameters():
         p.requires_grad = False
-    if args.algorithm == 'Ours':
+    if args.algorithm == 'VPG':
         from lib import Ours
-        prompt = Ours(token_dim=args.input_dim, token_num=args.token_number)
+        # prompt = Ours(token_dim=args.input_dim, token_num=args.token_number)
+        prompt = Ours(token_dim=args.input_dim, ratio=args.ratio)
     elif args.algorithm == 'ProG':
         from lib import HeavyPrompt
-        prompt = HeavyPrompt(token_dim=args.input_dim)
+        prompt = HeavyPrompt(token_dim=args.input_dim, cross_prune=args.cross_prune)
+    elif args.algorithm == 'GPF':
+        from lib import GPF
+        prompt = GPF(token_dim=args.input_dim, cross_prune=args.cross_prune)
     answer = Answer(args.hidden_dim, args.num_classes, args.answer_layers)
 
     # training module
@@ -40,10 +48,10 @@ if __name__ == '__main__':
     model_checkpoint_callback = ModelCheckpoint(save_top_k=1, monitor=args.monitor, mode='max')
     trainer = Trainer(
         accelerator='gpu',
-        devices=1,
+        devices=[3],
         max_epochs=args.epochs,
         logger=WandbLogger(save_dir='./'),
-        callbacks=[early_stopping_callback, model_checkpoint_callback],
+        callbacks=[model_checkpoint_callback],
         enable_checkpointing=True,
         log_every_n_steps=1,
         check_val_every_n_epoch=1,
