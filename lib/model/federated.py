@@ -64,14 +64,13 @@ def normalize_matrix(coefficient):
     for index1, list in enumerate(tensor_coefficient):
         for index, value in enumerate(list):
             tensor_coefficient[index1][index] = value / col_sum[index1]
-    # print(tensor_coefficient)
-    # print(col_sum)
+
     normalized_coefficient = {
         'node': {'node': tensor_coefficient[0, 0].item(), 'edge': tensor_coefficient[0, 1].item(), 'graph': tensor_coefficient[0, 2].item()},
         'edge': {'node': tensor_coefficient[1, 0].item(), 'edge': tensor_coefficient[1, 1].item(), 'graph': tensor_coefficient[1, 2].item()},
         'graph': {'node': tensor_coefficient[2, 0].item(), 'edge': tensor_coefficient[2, 1].item(), 'graph': tensor_coefficient[2, 2].item()}
     }
-    # print(normalized_coefficient)
+
     return normalized_coefficient
         
 def compute_coefficient(client_list_by_task, lr_prompt, lr_answer):
@@ -102,40 +101,13 @@ def compute_coefficient(client_list_by_task, lr_prompt, lr_answer):
     for task in ['node', 'edge', 'graph']:
         weights_vector_last_epoch[task] = torch.cat((vector_prompt_weights_last_epoch[task], vector_answer_weights_last_epoch[task]), dim=0)
 
-    # prompt_coefficient = {
-    # 'node': {'node': None, 'edge': None, 'graph': None},
-    # 'edge': {'node': None, 'edge': None, 'graph': None},
-    # 'graph': {'node': None, 'edge': None, 'graph': None}
-    # }
-    # answer_coefficient = {
-    # 'node': {'node': None, 'edge': None, 'graph': None},
-    # 'edge': {'node': None, 'edge': None, 'graph': None},
-    # 'graph': {'node': None, 'edge': None, 'graph': None}
-    # }
-        
     coefficient = {
     'node': {'node': None, 'edge': None, 'graph': None},
     'edge': {'node': None, 'edge': None, 'graph': None},
     'graph': {'node': None, 'edge': None, 'graph': None}
     }
 
-    # for source in ['node', 'edge', 'graph']:
-    #     for target in ['node', 'edge', 'graph']:
-    #         if source == target:
-    #             prompt_coefficient[source][target] = torch.norm(vector_prompt_weights[target])
-    #         else:
-    #             temp1 = vector_prompt_weights[target] - vector_prompt_weights_last_epoch[target]
-    #             temp2 = vector_prompt_weights[source] - vector_prompt_weights_last_epoch[target]
-    #             prompt_coefficient[source][target] = torch.dot(temp1, temp2) / torch.norm(temp1)
 
-    # for source in ['node', 'edge', 'graph']:
-    #     for target in ['node', 'edge', 'graph']:
-    #         if source == target:
-    #             answer_coefficient[source][target] = torch.norm(vector_answer_weights[target])
-    #         else:
-    #             temp1 = vector_answer_weights[target] - vector_answer_weights_last_epoch[target]
-    #             temp2 = vector_answer_weights[source] - vector_answer_weights_last_epoch[target]
-    #             answer_coefficient[source][target] = torch.dot(temp1, temp2) / torch.norm(temp1)
     for target in ['node', 'edge', 'graph']:
         for source in ['node', 'edge', 'graph']:
             if source == target:
@@ -145,23 +117,8 @@ def compute_coefficient(client_list_by_task, lr_prompt, lr_answer):
                 temp2 = weights_vector[source] - weights_vector_last_epoch[target]
                 coefficient[target][source] = torch.dot(temp1, temp2) / torch.norm(temp1)
 
-    # prompt_coefficient = normalize_matrix(prompt_coefficient)
-    # answer_coefficient = normalize_matrix(answer_coefficient)
-    # coefficient['node']['node'] = torch.tensor(0)
-    # coefficient['node']['edge'] = torch.tensor(0)
-    # coefficient['node']['graph'] = torch.tensor(1)
-
-    # coefficient['edge']['node'] = torch.tensor(0)
-    # coefficient['edge']['edge'] = torch.tensor(0)
-    # coefficient['edge']['graph'] = torch.tensor(1)
-
-    # coefficient['graph']['node'] = torch.tensor(0)
-    # coefficient['graph']['edge'] = torch.tensor(0)
-    # coefficient['graph']['graph'] = torch.tensor(1)
 
     coefficient = normalize_matrix(coefficient)
-    
-    print(coefficient)
 
     return coefficient, coefficient
 
@@ -186,33 +143,7 @@ def weighted_task_fed_avg(client_list_by_task, prompt_coefficient, answer_coeffi
     }
 
     for task in ['node', 'edge', 'graph']:
-        # if task == 'node':
-        #     aggregated_prompt_weight = {k: (task_prompt_weights['node'][k] * 0.2 +
-        #                                     task_prompt_weights['edge'][k] * 0 +
-        #                                     task_prompt_weights['graph'][k] * 0.8)
-        #                                 for k in task_prompt_weights['graph'].keys()}
-        #     aggregated_answer_weight = {k: (task_answer_weights['node'][k] * 0.2 +
-        #                                     task_answer_weights['edge'][k] * 0 +
-        #                                     task_answer_weights['graph'][k] * 0.8)
-        #                                 for k in task_answer_weights['graph'].keys()}
-        # elif task == 'edge':
-        #     aggregated_prompt_weight = {k: (task_prompt_weights['node'][k] * 0 +
-        #                                     task_prompt_weights['edge'][k] * 0.5 +
-        #                                     task_prompt_weights['graph'][k] * 0.5)
-        #                                 for k in task_prompt_weights['graph'].keys()}
-        #     aggregated_answer_weight = {k: (task_answer_weights['node'][k] * 0 +
-        #                                     task_answer_weights['edge'][k] * 0.5 +
-        #                                     task_answer_weights['graph'][k] * 0.5)
-        #                                 for k in task_answer_weights['graph'].keys()}
-        # elif task == 'graph':
-        #     aggregated_prompt_weight = {k: (task_prompt_weights['node'][k] * 0 +
-        #                                     task_prompt_weights['edge'][k] * 0 +
-        #                                     task_prompt_weights['graph'][k] * 1)
-        #                                 for k in task_prompt_weights['graph'].keys()}
-        #     aggregated_answer_weight = {k: (task_answer_weights['node'][k] * 0 +
-        #                                     task_answer_weights['edge'][k] * 0 +
-        #                                     task_answer_weights['graph'][k] * 1)
-        #                                 for k in task_answer_weights['graph'].keys()}
+
         aggregated_prompt_weight = {k: (task_prompt_weights['node'][k] * prompt_coefficient[task]['node'] +
                                         task_prompt_weights['edge'][k] * prompt_coefficient[task]['edge'] +
                                         task_prompt_weights['graph'][k] * prompt_coefficient[task]['graph'])
