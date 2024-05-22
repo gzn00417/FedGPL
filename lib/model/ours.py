@@ -92,7 +92,7 @@ def filter_adj(
     scores = scores[mask] 
 
     num_edges = scores.size(0)
-    topk = int(0.5 * num_edges)
+    topk = int(0.9 * num_edges)
     topk_indices = scores.topk(topk, largest=True).indices
 
     row = row[topk_indices]
