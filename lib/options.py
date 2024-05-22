@@ -9,8 +9,6 @@ def args_parser():
 
     parser.add_argument('--ratio', type=float, default=0.5)
     parser.add_argument('--cross_prune', type=float, default=0.1)
-    
-
     # data
     parser.add_argument('--few_shot', action='store_true', default=False)
     parser.add_argument('--k', type=int, default=100)
@@ -19,7 +17,7 @@ def args_parser():
     parser.add_argument('-C', '--num_users', type=int, default=9, help='number of users')
 
     # model
-    parser.add_argument('-F', '--federated', type=str, default='HiDTA', choices=['Local', 'FedAvg', 'HiDTA', 'scaffold', 'FedProx'], help='')
+    parser.add_argument('-F', '--federated', type=str, default='HiDTA', choices=['FedAvg', 'HiDTA', 'scaffold', 'FedProx'], help='')
     parser.add_argument('-A', '--algorithm', type=str, default='VPG', choices=['VPG', 'ProG', 'GPF'], help='algorithm you want to run')
     parser.add_argument('-G', '--gnn_type', type=str, default='TransformerConv', help='type of gnn')
     parser.add_argument('-T', '--token_number', type=int, default=0, help='number of tokens per_class')
