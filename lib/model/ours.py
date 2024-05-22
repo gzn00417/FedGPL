@@ -49,13 +49,12 @@ def select_top_k(
             k = (float(ratio) * num_nodes.to(x.dtype)).ceil().to(torch.long)
 
         if isinstance(ratio, int) and (k == ratio).all():
-            # If all graphs have exactly `ratio` or more than `ratio` entries,
-            # we can just pick the first entries in `perm` batch-wise:
+
             index = torch.arange(batch_size, device=x.device) * max_num_nodes
             index = index.view(-1, 1).repeat(1, ratio).view(-1)
             index += torch.arange(ratio, device=x.device).repeat(batch_size)
         else:
-            # Otherwise, compute indices per graph:
+
             index = torch.cat([
                 torch.arange(k[i], device=x.device) + i * max_num_nodes
                 for i in range(batch_size)
