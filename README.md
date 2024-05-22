@@ -1,4 +1,6 @@
-# Federated-Graph-Prompting
+# Federated Graph Prompt Learning
+
+Graph Prompt Learning (GPL) has attracted increasing attention for eliciting the generalizability of the Pre-trained Graph Model (PGM) on various downstream graph tasks. However, privacy concerns on PGM and data simultaneously arise when fine-tuning an available PGM on privately owned domain-specific graphs. To this end, we propose a privacy-preserving framework, Federated Graph Prompt Learning (FedGPL), for fine-tuning personalized graph models among participants with heterogeneous graph tasks and data. First, we construct a split framework for end-to-end fine-tuning with joint preservation of PGM and data privacy. This framework isolates PGM and graph data against potential unauthorized access and communicates by differentially privatized graph representations and gradients. Then, to overcome task and data heterogeneity, we propose a hierarchical aggregation algorithm to distill task- and data- specific beneficial knowledge in a disentangled manner. Besides, we devise a graph prompt to softly insert denoized homogeneous structures to further mitigate task and data heterogeneity. Extensive experiments demonstrate the effectiveness of FedGPL in terms of accuracy against various baseline FL frameworks and GPL methods under privacy constraints.
 
 ## Running experiments
 
