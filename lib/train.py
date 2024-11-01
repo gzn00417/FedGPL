@@ -5,6 +5,7 @@ from torch_geometric.loader import DataLoader
 import torchmetrics
 import pytorch_lightning as pl
 from copy import deepcopy
+import sys
 
 from .data import get_dataset
 from .model.federated import *
@@ -20,9 +21,11 @@ class Server(pl.LightningModule):
         self.validation_step_outputs: Dict[str, List] = {'node': [], 'edge': [], 'graph': []}
         # init pretrain GNN
         self.pre_trained_gnn = pre_trained_gnn
+        self.pre_trained_gnn = pre_trained_gnn.to('cuda')
+        
         # init prompt & answer
-        self.global_prompt = prompt
-        self.global_answer = answer
+        self.global_prompt = prompt.to('cuda')
+        self.global_answer = answer.to('cuda')
         # init clients
         self.init_clients()
 
@@ -30,9 +33,22 @@ class Server(pl.LightningModule):
         self.global_c_prompt = torch.zeros_like(SerializationTool.serialize_model(self.global_prompt))
         self.global_c_answer = torch.zeros_like(SerializationTool.serialize_model(self.global_answer))
 
+        self.gnn_list = []  # 添加 GNN 列表
+
+        print("!!!!!!!!!!!!!!!!")
+        self.print_global_prompt_memory_usage()
+        print()
+    
+    def print_global_prompt_memory_usage(self):
+        # 获取global_prompt的显存使用情况
+        global_prompt_size = sum(p.numel() * p.element_size() for p in self.global_prompt.parameters())
+        global_prompt_size_mb = global_prompt_size / (1024 ** 2)  # 转换为MB
+        print(f"Global Prompt GPU Memory Usage: {global_prompt_size_mb:.2f} MB")
+
     def init_clients(self):
         # init data
         dataset = get_dataset(self.hparams.dataset_name, self.hparams.num_classes, self.hparams.num_users, self.hparams.data_type, self.hparams.alpha)
+        # dataset_1, dataset_2 = get_dataset(self.hparams.dataset_name, self.hparams.num_classes, 6, self.hparams.data_type, self.hparams.alpha)
         self.client_list = []
         self.client_list_by_task: Dict[str, List] = {'node': [], 'edge': [], 'graph': []}
         num_clients_per_task = self.hparams.num_users // 3
@@ -52,18 +68,56 @@ class Server(pl.LightningModule):
             self.client_list.append(client)
             self.client_list_by_task['graph'].append(client)
 
+        # num_clients_per_task = 1
+        # # node task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('node', dataset_1['node']['train'][i], dataset_1['node']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['node'].append(client)
+        # # edge task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('edge', dataset_1['edge']['train'][i], dataset_1['edge']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['edge'].append(client)
+        # # graph task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('graph', dataset_1['graph']['train'][i], dataset_1['graph']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['graph'].append(client)
+
+        # # node task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('node', dataset_2['node']['train'][i], dataset_2['node']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['node'].append(client)
+        # # edge task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('edge', dataset_2['edge']['train'][i], dataset_2['edge']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['edge'].append(client)
+        # # graph task
+        # for i in range(num_clients_per_task):
+        #     client = self.init_client('graph', dataset_2['graph']['train'][i], dataset_2['graph']['test'][i])
+        #     self.client_list.append(client)
+        #     self.client_list_by_task['graph'].append(client)
+
     def init_client(self, task, train_dataset, test_dataset):
-        return Client(
+        client = Client(
             task=task,
             hparams=self.hparams,
             train_dataset=train_dataset,
             val_dataset=test_dataset,
-            pre_trained_gnn=self.pre_trained_gnn,
+            pre_trained_gnn=deepcopy(self.pre_trained_gnn),
             prompt=deepcopy(self.global_prompt),
             answer=deepcopy(self.global_answer),
         )
+        
+
+        
+        return client
 
     def configure_optimizers(self):
+        # 返回所有优化器，包括 pre_trained_gnn 的优化器
         pass
 
     def train_dataloader(self):
@@ -97,7 +151,9 @@ class Server(pl.LightningModule):
                     client.answer.load_state_dict(add_noise_for_state_dict(client.answer.state_dict(), self.hparams.epsilon))
                 prompt_coefficient, answer_coefficient = compute_coefficient(self.client_list_by_task, self.hparams.lr_prompt, self.hparams.lr_answer)
                 weighted_task_fed_avg(self.client_list_by_task, prompt_coefficient, answer_coefficient, self.hparams.epsilon)
+                fed_gnn(self.gnn_list)
             else:
+                
                 fed_avg_prompt(self.client_list)
                 fed_avg_answer(self.client_list)
         elif self.hparams.federated == 'scaffold':
@@ -128,16 +184,19 @@ class Server(pl.LightningModule):
         client = self.client_list[int(batch[0])]
         if self.hparams.federated == 'scaffold':
             if self.current_epoch > 10:
-                client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
+                gnn = client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
             else:
-                client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
+                gnn = client.train(self.device, self.hparams.local_epochs, deepcopy(self.global_c_answer), deepcopy(self.global_c_prompt), flag = 1)
         else:
-            client.train(self.device, self.hparams.local_epochs, None, None)
+            gnn = client.train(self.device, self.hparams.local_epochs, self.pre_trained_gnn, None, None)
+            self.pre_trained_gnn = gnn
 
     def on_train_epoch_end(self):
         loss = [client.loss for client in self.client_list]
         overall_loss = sum(loss) / len(loss)
         self.log('train_loss', overall_loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        # 在每个 epoch 结束时收集每个客户端的 GNN
+        self.gnn_list = [client.pre_trained_gnn for client in self.client_list]
 
     def validation_step(self, batch, *args, **kwargs):
         client = self.client_list[int(batch[0])]
@@ -227,6 +286,10 @@ class Client(object):
     def configure_optimizers(self):
         self.optimizer_prompt = torch.optim.Adam(self.prompt.parameters(), lr=self.hparams.lr_prompt, weight_decay=self.hparams.wd_prompt)
         self.optimizer_answer = torch.optim.Adam(self.answer.parameters(), lr=self.hparams.lr_answer, weight_decay=self.hparams.wd_answer)
+        self.optimizer_gnn = torch.optim.Adam(self.pre_trained_gnn.parameters(), lr=0.001)
+        self.scheduler_gnn = torch.optim.lr_scheduler.StepLR(optimizer=self.optimizer_gnn, 
+                                                                step_size=10, 
+                                                                gamma=0.95)
         self.scheduler_prompt = torch.optim.lr_scheduler.StepLR(optimizer=self.optimizer_prompt, step_size=self.hparams.step_size_prompt, gamma=self.hparams.gamma_prompt)
         self.scheduler_answer = torch.optim.lr_scheduler.StepLR(optimizer=self.optimizer_answer, step_size=self.hparams.step_size_answer, gamma=self.hparams.gamma_answer)
 
@@ -239,12 +302,15 @@ class Client(object):
     def to(self, device):
         self.prompt = self.prompt.to(device)
         self.answer = self.answer.to(device)
+        self.pre_trained_gnn = self.pre_trained_gnn.to(device)
         self.accuracy_function = self.accuracy_function.to(device)
         self.f1_function = self.f1_function.to(device)
 
-    def train(self, device: str, local_epochs: int = 5, global_c_answer=None, global_c_prompt=None, flag = 1):
+    def train(self, device: str, local_epochs: int = 5, gnn=None, global_c_answer=None, global_c_prompt=None, flag = 1):
         self.prompt_last_epoch = deepcopy(self.prompt)
         self.answer_last_epoch = deepcopy(self.answer)
+        if gnn is not None:
+            self.pre_trained_gnn.load_state_dict(gnn.state_dict())
         for _ in range(local_epochs):
             for batch in self.train_dataloader:
                 if self.hparams.federated == 'scaffold':
@@ -255,6 +321,7 @@ class Client(object):
                     self.loss = loss.item()
                     self.optimizer_answer.zero_grad()
                     self.optimizer_prompt.zero_grad()
+                    self.optimizer_gnn.zero_grad()  # 清空梯度
                     loss.backward()
                     for param_prompt, param_answer, c_i_prompt, c_i_answer, c_g_prompt, c_g_answer in zip(self.prompt.parameters(), self.answer.parameters(),
                                                                                                           self.c_prompt, self.c_answer, 
@@ -267,6 +334,7 @@ class Client(object):
                             param_answer.grad = param_answer.grad - torch.zeros_like(c_i_answer) + torch.zeros_like(c_g_answer)
                     self.optimizer_prompt.step()
                     self.optimizer_answer.step()
+                    self.optimizer_gnn.step()  # 更新参数
                 else:
                     x, edge_index, tbatch = self.prompt(batch.to(device))
                     # add dp (Local Training Phase)
@@ -280,8 +348,12 @@ class Client(object):
                     loss = self.loss_function(pred, batch.y)
                     self.loss = loss.item()
                     self.optimizer_answer.zero_grad()
+                    self.optimizer_gnn.zero_grad()  # 清空梯度
                     loss.backward()
                     self.optimizer_answer.step()
+                    
+                    
+                    
                     embedding_grad = graph_emb_rg.grad.clone()
                     # add dp (Local Training Phase)
                     embedding_grad = add_laplace_noise(embedding_grad, self.epsilon)
@@ -289,6 +361,10 @@ class Client(object):
                     if x_rg.grad is not None:
                         x_rg.grad.data.zero_()
                     graph_emb.backward(embedding_grad)
+                    
+                    # print("Gradients before step:", [param.grad for param in self.pre_trained_gnn.parameters() if param.grad is not None])
+                    
+                    self.optimizer_gnn.step()
                     
                     x_grad = x_rg.grad.clone()
                     # add dp (Local Training Phase)
@@ -319,7 +395,7 @@ class Client(object):
                 self.c_answer = torch.zeros_like(self.c_answer)
                 self.dc_prompt = torch.zeros_like(self.dc_prompt)
                 self.dc_answer = torch.zeros_like(self.dc_answer)
-
+        return self.pre_trained_gnn
 
     def validate(self, device: str):
         for batch in self.val_dataloader:

@@ -4,7 +4,7 @@ Federated Graph Learning (FGL) aims to collaboratively and privately optimize gr
 
 ## Running experiments
 
-* To train the FedGPL (VPG and HiDTA by default) on Cora and ratio=0.1:
+* To finetune on Cora with FedGPL and ratio=0.1:
     ```
     python main.py --algorithm VPG --dataset_name Cora --federated HiDTA --num_classes 7 --ratio 0.1
     ```
