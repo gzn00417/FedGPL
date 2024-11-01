@@ -4,7 +4,7 @@ Graph Prompt Learning (GPL) has attracted increasing attention for eliciting the
 
 ## Running experiments
 
-* To train the VPG on Cora with HiDTA and ratio=0.1:
+* To finetune on Cora with FedGPL and ratio=0.1:
     ```
     python main.py --algorithm VPG --dataset_name Cora --federated HiDTA --num_classes 7 --ratio 0.1
     ```
